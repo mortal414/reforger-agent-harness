@@ -157,6 +157,26 @@ python tools/export_upload_images.py --image '<native>/shot-01.png' --image '<na
 
 The default strict ceiling is 4,800,000 decimal bytes. It searches JPEG quality 100 down to the declared floor, retaining dimensions/framing and 4:4:4 chroma; it refuses transparent originals, resizing and overwrite. The manifest records original/export hashes, encoding quality and measured pixel difference. JPEG is lossy; archive the native originals. Inspect actual exported images. Partial failures retain their receipt and completed files. Publication remains a separate human action.
 
+## Recent-work resume check
+
+Keep one addon-owned current-candidate record: exact public carrier prefab and
+child, project/world, source/build/registry successor hashes, proved behaviors,
+missing user-facing interactions, next integrated check and current owner. A
+private diagnostic PASS is scoped to its actual package; it does not promote a
+different public prefab. Reuse the proved complete startup topology rather than
+extracting another minimal world while the product's ordinary spawn is unproved.
+
+Before a player review, put its required stock tools/providers and finite supplies
+in the same persistent scenario. A separate repair API fixture does not establish
+that the player can find and hold the ordinary prompt in the review world. Keep
+QA instrumentation in a dependent addon and use the exact proposed public carrier.
+
+After the functional core passes, batch the remaining ordinary interactions in
+one integrated course, then perform one matched visual/audio review. Preserve
+separate claims for setup, input delivery, native admission, behavior, appearance,
+audio, lifecycle and multiplayer; do not turn every unmeasured detail into another
+independent framework or repeat already qualified core tests without a changed cause.
+
 ## Fresh task handoff
 
 Record one current entrypoint, job path/hash, exact fixture/package identity, selected cases/assertions, evidence index, measured verdicts and missing measurements. Include the current owner/lease and whether a human window is open. Link old attempts as history instead of stacking contradictory “current” paragraphs. Use milestone updates for new findings, changed plans or blockers; avoid per-poll narration. See [audit and validation](workflow-audit.md) for the observed reasons behind these gates.

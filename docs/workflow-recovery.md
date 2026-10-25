@@ -57,8 +57,37 @@ Normal closure, exact identity, lease release and the scenario verdict are separ
 
 When blocked, report: exact requested action and target; reason/source; what completed; denied, pending or uncertain outcome; current owned process/lease; and the concrete safe next step. Put the same blocker in the top-level task milestone immediately. Do not hide a required question inside a child task or repeatedly narrate an unchanged poll.
 
+## Pending work and native controls
+
+A submitted tool call or queued task is pending, not completed or known not run.
+Retain its handle/operation ID, exact target, last observed state and owner; inspect
+that operation before resending. Report useful findings and the blocked next action
+to the coordinator at the next safe point. Reassign only after resolving uncertain
+side effects and ownership; do not wait silently for a blocked child indefinitely.
+
+For a failed ordinary vehicle action, distinguish native settled flags from
+animation-graph cleanup. Door reservation release and a controller's closing flag
+can clear while primary/secondary door-transition tags remain active. Observe the
+actual source slot/manager, valid doors, released users and graph transitions before
+one request; test a measured readiness predicate rather than a larger timeout.
+Automatic door index -1 is a selection request, not proof that an authored door is
+missing. Compare ordinary input on a working installed control before treating a
+direct scripted action failure or absent callback as a production failure. A shared
+baseline diagnostic failure limits that diagnostic; it does not prove all product
+paths healthy. Keep the original failure and qualify the actual behavior separately.
+
 ## Release handoff checklist
 
 Save a frozen package manifest and notice/dependency audit, tested scope and missing acceptance, Git revision/CI, description/title, preview and screenshot byte/dimension/hash receipts. Check decimal limits with margin; do not assume MiB equals MB. Preserve originals and reference provenance. Clean public source excludes private QA/raw assets, chats, profiles and machine-specific paths.
 
 The publisher remains manual and user-owned. Present current item/owner, visibility, license/terms and final assets for review; never infer publication from preparation, a local validation warning or a single click. Check the latest STOP/cancellation before any new external action. No command introduced by this workflow submits, accepts agreements, or publishes.
+
+Derive the public description/changelog/version, catalog metadata, dependencies
+and attribution from one reviewed source for the exact release. Regenerate a fresh
+clean build trio and manifest after changes; record derived registry/import metadata
+as an explicit successor rather than silently replacing frozen hashes. Verify the
+exact proposed public prefab through ordinary spawning/use before promotion, and
+verify remote version, changelog and description separately after publication.
+Publication success does not prove that an old description was replaced. Git sync
+remains a separate owned receipt; a denial is reported, never bypassed by another
+Git directory/transport/copy route.
