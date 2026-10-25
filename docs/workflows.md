@@ -159,6 +159,13 @@ The default strict ceiling is 4,800,000 decimal bytes. It searches JPEG quality 
 
 ## Recent-work resume check
 
+For a pinned current vehicle candidate, optionally add `candidateLedger` to its
+existing job and use [candidate preflight](candidate-preflight.md). It compares
+source/resource identity, exported context/fuel contracts and explicit readiness
+evidence without launching, sending input or transferring files. The same page
+maps learned failures to offline tests and the smallest changed native gate set;
+integrated acceptance remains required. Capability alone never means input worked.
+
 Keep one addon-owned current-candidate record: exact public carrier prefab and
 child, project/world, source/build/registry successor hashes, proved behaviors,
 missing user-facing interactions, next integrated check and current owner. A

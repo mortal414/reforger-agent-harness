@@ -161,11 +161,160 @@ def dependency_preflight(project, roots):
     return {guid: by_id[guid] for guid in needed}
 
 
+def input_readiness(value):
+    """Classify supplied evidence only. Never sends input or qualifies behavior."""
+    exact_keys(value, ['capability', 'foreground', 'occupied', 'reservationsReleased',
+                      'transitionTags', 'requestedEvents', 'deliveredEvents'],
+                     ['capability', 'foreground', 'occupied', 'reservationsReleased',
+                      'transitionTags', 'requestedEvents', 'deliveredEvents'])
+    for key in ('capability', 'foreground', 'occupied', 'reservationsReleased'):
+        require(type(value[key]) is bool, 'Input readiness requires explicit booleans: ' + key)
+    tags = strings(value['transitionTags'], 'input.transitionTags')
+    requested, delivered = value['requestedEvents'], value['deliveredEvents']
+    require(type(requested) is int and type(delivered) is int and 0 <= delivered <= requested <= 10000,
+            'Input event counts must be integers with 0 <= delivered <= requested <= 10000')
+    require(value['capability'], 'INPUT_CAPABILITY_UNAVAILABLE; no input success established')
+    require(value['foreground'] and value['occupied'] and value['reservationsReleased'] and not tags,
+            'INPUT_NOT_READY: foreground/occupancy/reservation/graph cleanup incomplete')
+    require(not requested or delivered == requested,
+            'INPUT_NOT_DELIVERED: incomplete or zero delivered events; preserve attempt, do not retry blindly')
+    return {'status': 'NOT_TESTED', 'readyForProbe': not requested, 'inputDelivered': bool(delivered),
+            'behaviorQualified': False,
+            'reason': 'Capability/readiness only; one ordinary probe remains' if not requested else
+                      'Reported event delivery only; physical positive control and behavior remain untested'}
+
+
+def candidate_preflight(ledger_path):
+    """Check pinned addon-owned facts; no engine parser, transfer or process API."""
+    ledger_path = Path(ledger_path).resolve(strict=True)
+    ledger = read_json(ledger_path)
+    exact_keys(ledger, ['schema', 'candidateId', 'supersedes', 'manifest', 'facts', 'contracts', 'libraryPins'],
+                      ['schema', 'candidateId', 'manifest', 'facts', 'contracts'])
+    require(type(ledger['schema']) is int and ledger['schema'] == 1, 'Unsupported candidate ledger schema')
+    candidate = ledger['candidateId']
+    require(isinstance(candidate, str) and LABEL.fullmatch(candidate), 'Safe candidateId required')
+    prior = strings(ledger.get('supersedes', []), 'candidate.supersedes')
+    require(all(LABEL.fullmatch(v) for v in prior) and candidate not in prior, 'Invalid superseded candidate IDs')
+    pins = {str(ledger_path): file_identity(ledger_path)}
+
+    def pinned(row, base):
+        exact_keys(row, ['path', 'sha256'], ['path', 'sha256'])
+        require(isinstance(row['sha256'], str) and re.fullmatch(r'[0-9a-f]{64}', row['sha256']), 'Explicit SHA256 pin required')
+        try:
+            pin = file_identity(resolve(base, row['path']))
+        except OSError as error:
+            raise WorkflowError('CANDIDATE_ARTIFACT_UNAVAILABLE: restore the pinned version; ' + str(error)) from error
+        require(pin['sha256'] == row['sha256'], 'CANDIDATE_IDENTITY_MISMATCH: ' + pin['path'])
+        pins[pin['path']] = pin
+        return pin
+
+    manifest_pin = pinned(ledger['manifest'], ledger_path.parent)
+    manifest_base = Path(manifest_pin['path']).parent
+    manifest = read_json(manifest_pin['path'])
+    exact_keys(manifest, ['schema', 'files'], ['schema', 'files'])
+    require(type(manifest['schema']) is int and manifest['schema'] == 1, 'Unsupported source manifest schema')
+    require(isinstance(manifest['files'], list) and 1 <= len(manifest['files']) <= 10000, 'Source manifest needs 1..10000 files')
+    source_files, resources = set(), {}
+    for row in manifest['files']:
+        exact_keys(row, ['path', 'sha256', 'resourceId'], ['path', 'sha256'])
+        pin = pinned({k: row[k] for k in ('path', 'sha256')}, manifest_base)
+        require(pin['path'] not in source_files, 'Duplicate candidate source path')
+        source_files.add(pin['path'])
+        if 'resourceId' in row:
+            guid = row['resourceId']
+            require(isinstance(guid, str) and re.fullmatch(r'[0-9A-F]{16}', guid), 'Uppercase 16-digit resourceId required')
+            require(guid not in resources.values(), 'Duplicate candidate resourceId')
+            resources[pin['path']] = guid
+    facts_pin = pinned(ledger['facts'], ledger_path.parent)
+    facts = read_json(facts_pin['path'])
+    exact_keys(facts, ['schema', 'candidateId', 'manifestSha256', 'resources', 'contexts', 'fuelNodes',
+                       'input', 'transfer', 'previousAttempt'],
+                      ['schema', 'candidateId', 'manifestSha256', 'resources', 'contexts', 'fuelNodes'])
+    require(type(facts['schema']) is int and facts['schema'] == 1, 'Unsupported candidate facts schema')
+    require(facts['candidateId'] == candidate and facts['manifestSha256'] == manifest_pin['sha256'],
+            'STALE_CANDIDATE_FACTS: candidate or source manifest differs')
+    require(isinstance(facts['resources'], list) and len(facts['resources']) <= 10000, 'Bounded resource facts required')
+    observed = {}
+    for row in facts['resources']:
+        exact_keys(row, ['path', 'resourceId'], ['path', 'resourceId'])
+        path = str(resolve(manifest_base, row['path']))
+        require(path not in observed, 'Duplicate resource fact path')
+        observed[path] = row['resourceId']
+    require(observed == resources, 'RESOURCE_IDENTITY_MISMATCH: source and exported resource map differ')
+
+    def named(rows, key, fields):
+        require(isinstance(rows, list) and len(rows) <= 256, 'Expected bounded contract/facts array')
+        out = {}
+        for row in rows:
+            exact_keys(row, fields, fields)
+            name = row[key]
+            require(isinstance(name, str) and name and name not in out, 'Unique nonempty ' + key + ' required')
+            out[name] = row
+        return out
+
+    def number(value):
+        return type(value) in (int, float) and math.isfinite(value)
+
+    contracts = ledger['contracts']
+    exact_keys(contracts, ['contexts', 'fuelNodes'], [])
+    contexts = named(facts['contexts'], 'name', ['name', 'frame', 'position'])
+    for expected in named(contracts.get('contexts', []), 'name', ['name', 'frame', 'position', 'tolerance']).values():
+        actual = contexts.get(expected['name'])
+        require(actual is not None and isinstance(expected['frame'], str) and expected['frame'] and
+                actual['frame'] == expected['frame'], 'CONTEXT_FRAME_MISMATCH: ' + expected['name'])
+        for position in (expected['position'], actual['position']):
+            require(isinstance(position, list) and len(position) == 3 and all(number(v) for v in position), 'Finite XYZ context position required')
+        tolerance = expected['tolerance']
+        require(number(tolerance) and tolerance >= 0, 'Explicit nonnegative position tolerance required')
+        require(all(abs(a - b) <= tolerance for a, b in zip(actual['position'], expected['position'])),
+                'CONTEXT_POSITION_MISMATCH: ' + expected['name'])
+    actual_fuel = named(facts['fuelNodes'], 'nodeId', ['nodeId', 'capacity'])
+    if 'fuelNodes' in contracts:
+        expected_fuel = named(contracts['fuelNodes'], 'nodeId', ['nodeId', 'capacity'])
+        require(set(actual_fuel) == set(expected_fuel), 'FUEL_NODE_TOPOLOGY_MISMATCH: inspect effective inherited node identities/count')
+        for key, expected in expected_fuel.items():
+            actual = actual_fuel[key]
+            require(number(expected['capacity']) and expected['capacity'] > 0 and
+                    number(actual['capacity']) and actual['capacity'] == expected['capacity'], 'FUEL_CAPACITY_MISMATCH: ' + key)
+    library = ledger.get('libraryPins', [])
+    require(isinstance(library, list) and len(library) <= 256, 'Bounded Library pins required')
+    library_ids = set()
+    for row in library:
+        exact_keys(row, ['path', 'sha256', 'fileId', 'version'], ['path', 'sha256', 'fileId', 'version'])
+        require(all(isinstance(row[k], str) and row[k].strip() for k in ('fileId', 'version')), 'Durable Library fileId/version required')
+        identity = (row['fileId'], row['version'])
+        require(identity not in library_ids, 'Duplicate Library identity')
+        library_ids.add(identity)
+        pinned({k: row[k] for k in ('path', 'sha256')}, ledger_path.parent)
+    if 'transfer' in facts:
+        transfer = facts['transfer']
+        exact_keys(transfer, ['metadataSupported', 'expectedFiles', 'completedFiles', 'error'],
+                            ['metadataSupported', 'expectedFiles', 'completedFiles', 'error'])
+        require(type(transfer['metadataSupported']) is bool and
+                (transfer['error'] is None or isinstance(transfer['error'], str)), 'Typed transfer capability/error required')
+        require(transfer['metadataSupported'] and not transfer['error'],
+                'TRANSFER_CAPABILITY_ERROR: ' + str(transfer['error'] or 'metadata unsupported') + '; stop and report, no helper bypass')
+        expected, completed = transfer['expectedFiles'], transfer['completedFiles']
+        require(type(expected) is int and type(completed) is int and 0 < expected == completed == len(library),
+                'TRANSFER_INCOMPLETE: expected, completed and hash-verified local Library pin counts must agree and exceed zero')
+    if 'previousAttempt' in facts:
+        previous = facts['previousAttempt']
+        exact_keys(previous, ['state', 'operationId', 'reason', 'verifiedExited', 'leaseReleased'],
+                            ['state', 'operationId', 'reason', 'verifiedExited', 'leaseReleased'])
+        require(all(isinstance(previous[k], str) and previous[k].strip() for k in ('operationId', 'reason')), 'Previous operation identity/reason required')
+        require(previous['state'] == 'EXITED_VERIFIED' and previous['verifiedExited'] is True and previous['leaseReleased'] is True,
+                'PREVIOUS_ATTEMPT_UNRESOLVED: preserve operation/owner; no resubmission or inferred closure')
+    readiness = input_readiness(facts['input']) if 'input' in facts else not_tested('No input readiness evidence supplied')
+    return {'schema': 1, 'status': 'NOT_TESTED', 'candidateId': candidate, 'sourceFiles': sorted(source_files),
+            'pins': list(pins.values()), 'input': readiness,
+            'reason': 'Pinned source/facts consistency only; fresh native registry, effective inheritance, input and integrated behavior remain adapter/manual gates'}
+
+
 def plan(job_path):
     job_path = Path(job_path).resolve(strict=True)
     job = read_json(job_path)
     exact_keys(job, ['schema', 'template', 'project', 'world', 'sourceRoots', 'addonRoots', 'requiredFiles', 'requiredClasses',
-                     'capabilities', 'adapter', 'cases', 'timeoutSeconds', 'closeGraceSeconds', 'notes'],
+                     'capabilities', 'adapter', 'cases', 'timeoutSeconds', 'closeGraceSeconds', 'notes', 'candidateLedger'],
                     ['schema', 'template', 'project', 'world', 'sourceRoots', 'addonRoots', 'requiredFiles', 'requiredClasses',
                      'capabilities', 'adapter', 'cases', 'timeoutSeconds', 'closeGraceSeconds'])
     require(job['schema'] == 1, 'Unsupported job schema')
@@ -199,6 +348,10 @@ def plan(job_path):
     require(len(worlds) == 1, 'Ambiguous world in supplied source roots: ' + world_path)
     world_pin = file_identity(next(iter(worlds)))
     pins = {project_pin['path']: project_pin, world_pin['path']: world_pin}
+    candidate = candidate_preflight(resolve(job_path.parent, job['candidateLedger'])) if 'candidateLedger' in job else None
+    if candidate:
+        require({project_pin['path'], world_pin['path']} <= set(candidate['sourceFiles']), 'Candidate manifest must include project and world')
+        pins.update({pin['path']: pin for pin in candidate['pins']})
     for row in dependencies.values():
         pins[row['path']] = file_identity(row['path'])
     require(isinstance(job['requiredFiles'], list) and len(job['requiredFiles']) <= 256, 'requiredFiles must be bounded array')
@@ -261,7 +414,7 @@ def plan(job_path):
             'project': str(project), 'projectGuid': ids[0].upper(), 'world': job['world'], 'dependencies': dependencies, 'classDefinitions': definitions,
             'pins': list(pins.values()), 'executable': executable_pin, 'script': str(script), 'args': args,
             'coordinator': file_identity(Path(__file__)),
-            'capabilities': job['capabilities'], 'cases': cases, 'timeoutSeconds': job['timeoutSeconds'],
+            'capabilities': job['capabilities'], 'candidate': candidate, 'cases': cases, 'timeoutSeconds': job['timeoutSeconds'],
             'closeGraceSeconds': job['closeGraceSeconds'], 'limits': template['limits']}
 
 
@@ -480,6 +633,8 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     sub = parser.add_subparsers(dest='command', required=True)
     sub.add_parser('templates', help='Task-to-template catalog')
+    p = sub.add_parser('preflight', help='Check one pinned candidate ledger offline; no launch, transfer or input')
+    p.add_argument('--ledger', type=Path, required=True)
     p = sub.add_parser('bindings', help='Discover machine-local addon workflow bindings; never launch')
     p.add_argument('--registry', type=Path, default=REGISTRY)
     p = sub.add_parser('init', help='Create a local job; adapter remains addon-owned')
@@ -512,6 +667,8 @@ def main(argv=None):
     try:
         if args.command == 'templates':
             result = read_json(TEMPLATES)
+        elif args.command == 'preflight':
+            result = candidate_preflight(args.ledger)
         elif args.command == 'bindings':
             result = bindings(args.registry)
         elif args.command == 'init':

@@ -284,4 +284,199 @@ class WorkflowTests(unittest.TestCase):
         with self.assertRaisesRegex(w.WorkflowError,'Duplicate mounted'):w.plan(self.path)
 
 
+class CandidatePreflightTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name)
+        (self.root/'addon.gproj').write_text('GameProject { GUID "0123456789ABCDEF" }')
+        (self.root/'Scene.ent').write_text('GenericEntity {}')
+        self.manifest = {'schema': 1, 'files': [
+            {'path': 'addon.gproj', 'sha256': w.sha(self.root/'addon.gproj'), 'resourceId': '0123456789ABCDEF'},
+            {'path': 'Scene.ent', 'sha256': w.sha(self.root/'Scene.ent')}]}
+        self.facts = {'schema': 1, 'candidateId': 'vehicle-r2', 'manifestSha256': '',
+                      'resources': [{'path': 'addon.gproj', 'resourceId': '0123456789ABCDEF'}],
+                      'contexts': [{'name': 'cargo', 'frame': 'entity', 'position': [0, 1, -2]}],
+                      'fuelNodes': [{'nodeId': 'inherited-tank', 'capacity': 50}],
+                      'input': {'capability': True, 'foreground': True, 'occupied': True,
+                                'reservationsReleased': True, 'transitionTags': [], 'requestedEvents': 0, 'deliveredEvents': 0}}
+        self.ledger = {'schema': 1, 'candidateId': 'vehicle-r2', 'supersedes': ['vehicle-r1'],
+                       'contracts': {'contexts': [{'name': 'cargo', 'frame': 'entity', 'position': [0, 1, -2], 'tolerance': .001}],
+                                     'fuelNodes': [{'nodeId': 'inherited-tank', 'capacity': 50}]}, 'libraryPins': []}
+        self.path = self.root/'candidate-ledger.json'
+        self.write()
+
+    def write(self, link_manifest=True):
+        (self.root/'source-manifest.json').write_text(json.dumps(self.manifest))
+        if link_manifest:
+            self.facts['manifestSha256'] = w.sha(self.root/'source-manifest.json')
+        (self.root/'facts.json').write_text(json.dumps(self.facts))
+        for key, name in (('manifest', 'source-manifest.json'), ('facts', 'facts.json')):
+            self.ledger[key] = {'path': name, 'sha256': w.sha(self.root/name)}
+        self.path.write_text(json.dumps(self.ledger))
+
+    def check(self):
+        with patch('workflow.subprocess.Popen', side_effect=AssertionError('preflight must never launch')):
+            return w.candidate_preflight(self.path)
+
+    def job(self):
+        (self.root/'adapter.py').write_text('# Offline test placeholder; never executed')
+        job = {'schema': 1, 'template': 'startup', 'project': 'addon.gproj', 'world': 'Scene.ent',
+               'sourceRoots': ['.'], 'addonRoots': ['.'], 'requiredFiles': [], 'requiredClasses': [],
+               'capabilities': ['isolated-reset', 'owned-lifecycle', 'native-load'],
+               'adapter': {'executable': sys.executable, 'script': 'adapter.py',
+                           'args': ['{script}', '{request}', '{result}', '{cancel}']},
+               'cases': [{'id': 'integrated', 'parameters': {}, 'assertions': ['fixture.ready', 'world.loaded']}],
+               'timeoutSeconds': 3, 'closeGraceSeconds': 2, 'candidateLedger': self.path.name}
+        path = self.root/'job.json';path.write_text(json.dumps(job));return path
+
+    def library_pin(self):
+        (self.root/'restored-export.bin').write_bytes(b'Pinned artifact bytes')
+        self.ledger['libraryPins'] = [{'path': 'restored-export.bin', 'sha256': w.sha(self.root/'restored-export.bin'),
+                                      'fileId': 'durable-file-123', 'version': 'version-7'}]
+
+    def test_consistent_candidate_is_static_not_tested_and_capability_is_not_input(self):
+        out = self.check()
+        self.assertEqual(out['status'], 'NOT_TESTED')
+        self.assertEqual(out['candidateId'], 'vehicle-r2')
+        self.assertTrue(out['input']['readyForProbe'])
+        self.assertFalse(out['input']['inputDelivered'])
+        self.assertFalse(out['input']['behaviorQualified'])
+
+    def test_wrong_bone_frame_blocks_before_any_launch(self):
+        self.facts['contexts'][0]['frame'] = 'bone:v_body';self.write()
+        with self.assertRaisesRegex(w.WorkflowError, 'CONTEXT_FRAME_MISMATCH'):self.check()
+
+    def test_context_position_mismatch_and_missing_observation(self):
+        self.facts['contexts'][0]['position'][1] = 4;self.write()
+        with self.assertRaisesRegex(w.WorkflowError, 'CONTEXT_POSITION_MISMATCH'):self.check()
+        self.facts['contexts'] = [];self.write()
+        with self.assertRaisesRegex(w.WorkflowError, 'CONTEXT_FRAME_MISMATCH'):self.check()
+
+    def test_context_position_rejects_boolean_and_invalid_tolerance(self):
+        self.facts['contexts'][0]['position'][0] = True;self.write()
+        with self.assertRaisesRegex(w.WorkflowError, 'Finite XYZ'):self.check()
+        self.facts['contexts'][0]['position'][0] = 0
+        self.ledger['contracts']['contexts'][0]['tolerance'] = -1;self.write()
+        with self.assertRaisesRegex(w.WorkflowError, 'tolerance'):self.check()
+
+    def test_additional_inherited_fuel_node_blocks(self):
+        self.facts['fuelNodes'].append({'nodeId': 'accidental-second-tank', 'capacity': 40});self.write()
+        with self.assertRaisesRegex(w.WorkflowError, 'FUEL_NODE_TOPOLOGY_MISMATCH'):self.check()
+
+    def test_duplicate_effective_fuel_identity_and_capacity_mismatch(self):
+        self.facts['fuelNodes'].append(dict(self.facts['fuelNodes'][0]));self.write()
+        with self.assertRaisesRegex(w.WorkflowError, 'Unique nonempty nodeId'):self.check()
+        self.facts['fuelNodes'].pop();self.facts['fuelNodes'][0]['capacity'] = 90;self.write()
+        with self.assertRaisesRegex(w.WorkflowError, 'FUEL_CAPACITY_MISMATCH'):self.check()
+
+    def test_vehicle_specific_multiple_fuel_nodes_are_supported(self):
+        node = {'nodeId': 'legitimate-auxiliary-tank', 'capacity': 20}
+        self.ledger['contracts']['fuelNodes'].append(node)
+        self.facts['fuelNodes'].append(node);self.write()
+        self.assertEqual(self.check()['status'], 'NOT_TESTED')
+
+    def test_changed_source_or_resource_identity_blocks(self):
+        (self.root/'Scene.ent').write_text('ChangedEntity {}')
+        with self.assertRaisesRegex(w.WorkflowError, 'CANDIDATE_IDENTITY_MISMATCH'):self.check()
+        (self.root/'Scene.ent').write_text('GenericEntity {}')
+        self.facts['resources'][0]['resourceId'] = 'FEDCBA9876543210';self.write()
+        with self.assertRaisesRegex(w.WorkflowError, 'RESOURCE_IDENTITY_MISMATCH'):self.check()
+
+    def test_old_candidate_handoff_and_old_source_snapshot_are_rejected(self):
+        self.facts['candidateId'] = 'vehicle-r1';self.write()
+        with self.assertRaisesRegex(w.WorkflowError, 'STALE_CANDIDATE_FACTS'):self.check()
+        self.facts['candidateId'] = 'vehicle-r2';self.facts['manifestSha256'] = '0'*64;self.write(False)
+        with self.assertRaisesRegex(w.WorkflowError, 'STALE_CANDIDATE_FACTS'):self.check()
+
+    def test_duplicate_resource_or_source_records_are_rejected(self):
+        self.manifest['files'].append(dict(self.manifest['files'][0]));self.write()
+        with self.assertRaisesRegex(w.WorkflowError, 'Duplicate candidate source'):self.check()
+        self.manifest['files'].pop();self.facts['resources'].append(dict(self.facts['resources'][0]));self.write()
+        with self.assertRaisesRegex(w.WorkflowError, 'Duplicate resource fact'):self.check()
+
+    def test_durable_library_pin_survives_restore_and_rejects_changed_bytes(self):
+        self.library_pin();self.write();self.check()
+        (self.root/'restored-export.bin').unlink()
+        with self.assertRaisesRegex(w.WorkflowError, 'CANDIDATE_ARTIFACT_UNAVAILABLE'):self.check()
+        (self.root/'restored-export.bin').write_bytes(b'Pinned artifact bytes');self.check()
+        (self.root/'restored-export.bin').write_bytes(b'Wrong download')
+        with self.assertRaisesRegex(w.WorkflowError, 'CANDIDATE_IDENTITY_MISMATCH'):self.check()
+
+    def test_library_pin_requires_durable_version(self):
+        self.library_pin();self.ledger['libraryPins'][0]['version'] = '';self.write()
+        with self.assertRaisesRegex(w.WorkflowError, 'fileId/version'):self.check()
+
+    def test_windows_metadata_capability_error_is_not_empty_transfer_success(self):
+        self.facts['transfer'] = {'metadataSupported': False, 'expectedFiles': 1, 'completedFiles': 0,
+                                  'error': "AttributeError: module os has no attribute setxattr"};self.write()
+        with self.assertRaisesRegex(w.WorkflowError, 'TRANSFER_CAPABILITY_ERROR.*setxattr'):self.check()
+
+    def test_zero_file_transfer_and_wrong_count_are_incomplete(self):
+        self.facts['transfer'] = {'metadataSupported': True, 'expectedFiles': 1, 'completedFiles': 0, 'error': None};self.write()
+        with self.assertRaisesRegex(w.WorkflowError, 'TRANSFER_INCOMPLETE'):self.check()
+        self.facts['transfer']['completedFiles'] = 1;self.write()
+        with self.assertRaisesRegex(w.WorkflowError, 'TRANSFER_INCOMPLETE'):self.check()
+
+    def test_transfer_receipt_requires_matching_local_hash_pins(self):
+        self.library_pin()
+        self.facts['transfer'] = {'metadataSupported': True, 'expectedFiles': 1, 'completedFiles': 1, 'error': None};self.write()
+        self.assertEqual(self.check()['status'], 'NOT_TESTED')
+
+    def test_sendinput_zero_or_partial_delivery_is_not_input_success(self):
+        for delivered in (0, 1):
+            self.facts['input'].update(requestedEvents=2, deliveredEvents=delivered);self.write()
+            with self.assertRaisesRegex(w.WorkflowError, 'INPUT_NOT_DELIVERED'):self.check()
+
+    def test_capability_and_graph_readiness_are_separate(self):
+        self.facts['input']['capability'] = False;self.write()
+        with self.assertRaisesRegex(w.WorkflowError, 'INPUT_CAPABILITY_UNAVAILABLE'):self.check()
+        self.facts['input']['capability'] = True
+        for key, value, original in [('transitionTags', ['TagVehicleClosingDoor'], []),
+                                      ('reservationsReleased', False, True), ('foreground', False, True), ('occupied', False, True)]:
+            self.facts['input'][key] = value;self.write()
+            with self.assertRaisesRegex(w.WorkflowError, 'INPUT_NOT_READY'):self.check()
+            self.facts['input'][key] = original
+
+    def test_reported_complete_delivery_still_cannot_qualify_behavior(self):
+        self.facts['input'].update(requestedEvents=2, deliveredEvents=2);self.write()
+        out = self.check()['input']
+        self.assertTrue(out['inputDelivered']);self.assertFalse(out['behaviorQualified'])
+        self.assertEqual(out['status'], 'NOT_TESTED')
+
+    def test_shutdown_hang_pending_or_denied_never_becomes_permission_to_retry(self):
+        previous = {'state': 'EXITED_VERIFIED', 'operationId': 'retained-operation', 'reason': 'fixture observation',
+                    'verifiedExited': True, 'leaseReleased': True}
+        self.facts['previousAttempt'] = previous
+        for state in ('PENDING', 'UNCERTAIN', 'DENIED'):
+            previous['state'] = state;self.write()
+            with self.assertRaisesRegex(w.WorkflowError, 'PREVIOUS_ATTEMPT_UNRESOLVED'):self.check()
+        previous['state'] = 'EXITED_VERIFIED';previous['verifiedExited'] = False;self.write()
+        with self.assertRaisesRegex(w.WorkflowError, 'PREVIOUS_ATTEMPT_UNRESOLVED'):self.check()
+        previous['verifiedExited'] = True;self.write();self.check()
+
+    def test_candidate_plan_pins_ledger_facts_source_and_library_without_launch(self):
+        self.library_pin();self.write()
+        with patch('workflow.subprocess.Popen', side_effect=AssertionError('launch')):
+            planned = w.run(self.job(), self.root/'unused')
+        self.assertEqual(planned['candidate']['candidateId'], 'vehicle-r2')
+        pins = {p['path'] for p in planned['pins']}
+        for name in ('candidate-ledger.json', 'facts.json', 'source-manifest.json', 'restored-export.bin'):
+            self.assertIn(str(self.root/name), pins)
+        (self.root/'facts.json').write_text('{}')
+        with self.assertRaisesRegex(w.WorkflowError, 'Input changed'):w.verify_pins(planned)
+        self.assertFalse((self.root/'unused').exists())
+
+    def test_manifest_must_bind_actual_planned_project_and_world(self):
+        self.manifest['files'] = self.manifest['files'][:1];self.write()
+        with self.assertRaisesRegex(w.WorkflowError, 'must include project and world'):w.plan(self.job())
+
+    def test_preflight_cli_is_read_only_and_returns_not_tested(self):
+        before = w.sha(self.path)
+        with patch('workflow.subprocess.Popen', side_effect=AssertionError('launch')), contextlib.redirect_stdout(io.StringIO()) as stream:
+            self.assertEqual(w.main(['preflight', '--ledger', str(self.path)]), 0)
+        self.assertEqual(json.loads(stream.getvalue())['status'], 'NOT_TESTED')
+        self.assertEqual(w.sha(self.path), before)
+
+
 if __name__=='__main__':unittest.main()
