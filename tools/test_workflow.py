@@ -22,9 +22,23 @@ if mode=='noisy': print('x'*4096,flush=True)
 e=result.parent/'native.log';e.write_text('Synthetic coordinator fixture; not engine evidence')
 out={'schema':1,'runId':r['runId'],'caseId':r['caseId'],
  'infrastructure':{'status':'PASS','reason':'synthetic fixture'},
- 'assertions':{k:{'status':'PASS','reason':'synthetic fixture'} for k in r['assertions']},
+ 'assertions':{k:{'status':'PASS','reason':'synthetic fixture','actual':{'syntheticObserved':True}} for k in r['assertions']},
  'lifecycle':{'status':'PASS','reason':'synthetic closure','verifiedExited':True,'leaseReleased':True},
  'evidence':[str(e)]}
+out['routeEvidence']={'routeId':r['route']['id'],'method':r['route']['method'],'measurements':{'syntheticObserved':True}}
+if mode=='no-route-measurement': del out['routeEvidence']
+if mode=='setter-proof': out['routeEvidence']['method']='state-setter'
+if mode=='empty-measurements': out['routeEvidence']['measurements']={}
+if mode=='missing-domain-measurement': del out['assertions']['world.loaded']['actual']
+if mode in ('stock-zero','wrong-stock-source','wrong-candidate-source','missing-control-source','matched-control-source'):
+ out['inputControl']={'schema':1,'runId':r['runId'],'caseId':r['caseId'],'sourceIdentity':r.get('inputControlIdentity') or {'stock':'a'*64,'candidate':'b'*64},
+ 'stock':{'spawned':True,'requestedEvents':4,'deliveredEvents':4,'behaviorObserved':True},
+ 'candidate':{'spawned':True,'requestedEvents':4,'deliveredEvents':4,'behaviorObserved':True},'physicalStockObserved':True}
+ if mode=='stock-zero':
+  for key in ('stock','candidate'):out['inputControl'][key].update(deliveredEvents=0,behaviorObserved=False)
+ if mode=='wrong-stock-source':out['inputControl']['sourceIdentity']['stock']='0'*64
+ if mode=='wrong-candidate-source':out['inputControl']['sourceIdentity']['candidate']='0'*64
+ if mode=='missing-control-source':del out['inputControl']['sourceIdentity']
 if mode=='fail': out['assertions']['fixture.ready']['status']='FAIL'
 if mode=='infra': out['infrastructure']['status']='NOT_TESTED'
 if mode=='stale': out['runId']='prior-run'
@@ -54,7 +68,16 @@ class WorkflowTests(unittest.TestCase):
                     'sourceRoots':['.'],'addonRoots':['.'],'requiredFiles':[{'path':'Scene.ent'}],'requiredClasses':['ProbeClass'],
                     'capabilities':['isolated-reset','owned-lifecycle','native-load'],
                     'adapter':{'executable':sys.executable,'script':'adapter.py','args':['{script}','{request}','{result}','{cancel}']},
-                    'cases':[self.case('first'),self.case('second')], 'timeoutSeconds':3,'closeGraceSeconds':2}
+                    'cases':[self.case('first'),self.case('second')], 'timeoutSeconds':3,'closeGraceSeconds':2,
+                    'routeContext':'route.json'}
+        self.route={'schema':1,'task':'validate','claim':'native-load','permission':'allowed',
+                    'ownership':'clear','previousAttempt':'none'}
+        sources={}
+        for name in ('stock','candidate'):
+            manifest=self.root/(name+'-source.json');manifest.write_text(json.dumps({'syntheticFixture':name}))
+            sources[name]={'path':manifest.name,'sha256':w.sha(manifest)}
+        self.route['inputControlSources']=sources
+        self.write_route()
         self.path = self.root/'job.json'
         self.write_job()
 
@@ -63,6 +86,9 @@ class WorkflowTests(unittest.TestCase):
 
     def write_job(self):
         self.path.write_text(json.dumps(self.job))
+
+    def write_route(self):
+        (self.root/'route.json').write_text(json.dumps(self.route))
 
     def run_job(self):
         return w.run(self.path,self.root/'batch',execute=True)
@@ -283,6 +309,108 @@ class WorkflowTests(unittest.TestCase):
         (self.root/'base/duplicate.gproj').write_text('GameProject { GUID "AAAAAAAAAAAAAAAA" }')
         with self.assertRaisesRegex(w.WorkflowError,'Duplicate mounted'):w.plan(self.path)
 
+    def test_legacy_job_plans_but_execute_requires_reviewed_route_context(self):
+        self.job.pop('routeContext');self.write_job()
+        self.assertEqual(w.plan(self.path)['routePreflight']['admission'],'HOLD')
+        with patch('workflow.subprocess.Popen',side_effect=AssertionError('launch')):
+            with self.assertRaisesRegex(w.WorkflowError,'ROUTE_ADMISSION_HOLD'):self.run_job()
+        self.assertFalse((self.root/'batch').exists())
+
+    def test_denied_unknown_and_pending_route_stop_before_output_or_spawn(self):
+        for field,value in [('permission','denied'),('permission','unknown'),('ownership','unknown'),
+                            ('ownership','occupied'),('previousAttempt','pending'),('previousAttempt','uncertain'),('previousAttempt','denied')]:
+            with self.subTest(field=field,value=value):
+                original=self.route[field];self.route[field]=value;self.write_route()
+                with patch('workflow.subprocess.Popen',side_effect=AssertionError('launch')):
+                    with self.assertRaisesRegex(w.WorkflowError,'ROUTE_ADMISSION_HOLD'):self.run_job()
+                self.assertFalse((self.root/'batch').exists())
+                self.route[field]=original
+
+    def test_route_context_and_catalog_are_pinned(self):
+        planned=w.plan(self.path)
+        self.route['ownership']='occupied';self.write_route()
+        with self.assertRaisesRegex(w.WorkflowError,'Input changed'):w.verify_pins(planned)
+        self.assertIn('routes.json',{Path(p['path']).name for p in planned['pins']})
+        self.assertIn('lessons.json',{Path(p['path']).name for p in planned['pins']})
+
+    def test_route_claim_cannot_replace_template_domain(self):
+        self.route.update(task='create',claim='job-created');self.write_route()
+        with self.assertRaisesRegex(w.WorkflowError,'JOB_ROUTE_CLAIM_MISMATCH'):self.run_job()
+
+    def test_all_adapter_passes_without_route_measurements_remain_not_tested(self):
+        self.job['cases']=[self.case('first','no-route-measurement')];self.write_job()
+        out=self.run_job()
+        self.assertEqual(out['status'],'NOT_TESTED')
+        result=w.read_json(self.root/'batch/first/result.json')
+        self.assertEqual(result['assertions']['world.loaded']['status'],'PASS')
+        self.assertEqual(result['assertions']['route.evidence']['status'],'NOT_TESTED')
+
+    def test_setter_proof_or_empty_measurements_cannot_pass_native_load(self):
+        for mode in ('setter-proof','empty-measurements'):
+            self.job['cases']=[self.case('first',mode)];self.write_job()
+            out=w.run(self.path,self.root/mode,True)
+            self.assertEqual(out['status'],'NOT_TESTED')
+            self.assertEqual(out['cases'][0]['infrastructure']['status'],'NOT_TESTED')
+
+    def test_route_provenance_alone_cannot_pass_unmeasured_native_assertion(self):
+        self.job['cases']=[self.case('first','missing-domain-measurement')];self.write_job()
+        out=self.run_job()
+        self.assertEqual(out['status'],'NOT_TESTED')
+        result=w.read_json(self.root/'batch/first/result.json')
+        self.assertEqual(result['assertions']['route.evidence']['status'],'PASS')
+        self.assertEqual(result['assertions']['world.loaded']['status'],'NOT_TESTED')
+
+    def test_existing_startup_healthy_recipe_can_choose_measured_action_route(self):
+        self.route.update(task='playtest',claim='measured-behavior',assessments={'native-actions':{
+            'state':'available','reason':'Synthetic action adapter code presence only',
+            'evidence':[{'path':'adapter.py','sha256':w.sha(self.root/'adapter.py')}]}})
+        self.write_route()
+        planned=w.plan(self.path)
+        self.assertEqual(planned['routePreflight']['admission'],'READY')
+        self.assertEqual(planned['routePreflight']['selected']['id'],'native-actions')
+
+    def test_stock_zero_events_censor_vehicle_failure_and_stop_next_case(self):
+        self.job['cases'][0]=self.case('first','stock-zero');self.write_job()
+        out=self.run_job()
+        self.assertEqual(out['status'],'NOT_TESTED')
+        self.assertEqual(out['notStarted'],['second'])
+        result=w.read_json(self.root/'batch/first/result.json')
+        self.assertEqual(result['inputAssessment']['classification'],'INPUT_DELIVERY_OR_FIXTURE_UNQUALIFIED')
+        self.assertFalse(result['inputAssessment']['vehicleDefectEstablished'])
+
+    def test_same_run_wrong_or_missing_source_control_stops_before_next_case(self):
+        for mode,classification in [('wrong-stock-source','SOURCE_IDENTITY_MISMATCH'),
+                                    ('wrong-candidate-source','SOURCE_IDENTITY_MISMATCH'),
+                                    ('missing-control-source','SOURCE_IDENTITY_MISSING')]:
+            with self.subTest(mode=mode):
+                self.job['cases'][0]=self.case('first',mode);self.write_job()
+                out=w.run(self.path,self.root/mode,True)
+                self.assertEqual(out['status'],'NOT_TESTED');self.assertEqual(out['notStarted'],['second'])
+                detail=w.read_json(self.root/mode/'first/result.json')
+                self.assertEqual(detail['inputAssessment']['classification'],classification)
+                self.assertEqual(detail['infrastructure']['status'],'NOT_TESTED')
+
+    def test_correct_source_pair_is_carried_from_pinned_context_into_request(self):
+        self.job['cases']=[self.case('first','matched-control-source')];self.write_job()
+        out=self.run_job();self.assertEqual(out['status'],'PASS')
+        request=w.read_json(self.root/'batch/first/request.json')
+        expected={name:pin['sha256'] for name,pin in self.route['inputControlSources'].items()}
+        self.assertEqual(request['inputControlIdentity'],expected)
+        detail=w.read_json(self.root/'batch/first/result.json')
+        self.assertTrue(detail['inputAssessment']['sourceIdentityMatched'])
+        self.assertTrue(detail['inputAssessment']['controlQualified'])
+        planned=w.plan(self.path)
+        self.assertTrue({'stock-source.json','candidate-source.json'} <= {Path(p['path']).name for p in planned['pins']})
+        (self.root/'candidate-source.json').write_text('changed fixture')
+        with self.assertRaisesRegex(w.WorkflowError,'Input control source manifest changed'):w.plan(self.path)
+
+    def test_missing_expected_source_identity_censors_supplied_control(self):
+        self.route.pop('inputControlSources');self.write_route()
+        self.job['cases'][0]=self.case('first','matched-control-source');self.write_job()
+        out=self.run_job();self.assertEqual(out['status'],'NOT_TESTED');self.assertEqual(out['notStarted'],['second'])
+        detail=w.read_json(self.root/'batch/first/result.json')
+        self.assertEqual(detail['inputAssessment']['classification'],'SOURCE_IDENTITY_UNBOUND')
+
 
 class CandidatePreflightTests(unittest.TestCase):
     def setUp(self):
@@ -466,6 +594,23 @@ class CandidatePreflightTests(unittest.TestCase):
         (self.root/'facts.json').write_text('{}')
         with self.assertRaisesRegex(w.WorkflowError, 'Input changed'):w.verify_pins(planned)
         self.assertFalse((self.root/'unused').exists())
+
+    def test_candidate_and_route_preflights_coexist_and_invalid_candidate_stops_execute(self):
+        path=self.job();job=w.read_json(path)
+        context=self.root/'route.json'
+        context.write_text(json.dumps({'schema':1,'task':'validate','claim':'native-load',
+            'permission':'allowed','ownership':'clear','previousAttempt':'none'}))
+        job['routeContext']=context.name;path.write_text(json.dumps(job))
+        with patch('workflow.subprocess.Popen',side_effect=AssertionError('launch')):
+            planned=w.plan(path)
+            self.assertEqual(planned['candidate']['candidateId'],'vehicle-r2')
+            self.assertEqual(planned['routePreflight']['admission'],'READY')
+            pins={row['path'] for row in planned['pins']}
+            self.assertIn(str(context),pins);self.assertIn(str(self.path),pins)
+            self.facts['fuelNodes'].append({'nodeId':'unintended-added-tank','capacity':10});self.write()
+            with self.assertRaisesRegex(w.WorkflowError,'FUEL_NODE_TOPOLOGY_MISMATCH'):
+                w.run(path,self.root/'must-not-launch',execute=True)
+        self.assertFalse((self.root/'must-not-launch').exists())
 
     def test_manifest_must_bind_actual_planned_project_and_world(self):
         self.manifest['files'] = self.manifest['files'][:1];self.write()

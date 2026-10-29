@@ -1,5 +1,7 @@
 # Reforger agent harness
 
+Start each operation with [programmatic route discovery](docs/programmatic-first.md): `python tools/workflow.py routes --task <task> --claim <claim>`. Prefer supported scripts, CLI, resource APIs, native actions, telemetry and file plans; desktop control requires evidenced necessity. [Native action reuse](docs/native-action-reuse.md) maps concrete existing recipes. New-version job/adapter admission changes are staged for a safe session boundary; never replace a live harness pin.
+
 Reusable local tools and operating notes for Arma Reforger and Enfusion Workbench. This repository contains **no addon source, packaged game data, voice assets, or game recordings**. The first addon developed with it lives separately in [Reforger Convoy Follower](https://github.com/mortal414/reforger-convoy-follower).
 
 The harness opens Workbench directly on a chosen project and world, validates and packs addons, launches isolated clients or private local servers, inspects logs and packages, and records evidence from a Windows display. Commands that start or change a game process dry-run until `--execute` is supplied.

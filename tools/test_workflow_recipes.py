@@ -24,9 +24,15 @@ class RecipeTests(unittest.TestCase):
 
     def init(self,template='terrain'):
         target=self.root/'job.json'
+        import workflow_routes as routes
+        task,claim=routes.DEFAULTS.get(template,('playtest','measured-behavior'))
+        context={'schema':1,'task':task,'claim':claim,'permission':'allowed','ownership':'clear','previousAttempt':'none',
+                 'assessments':{'native-actions':{'state':'available','reason':'Synthetic scaffold presence only, no native qualification',
+                    'evidence':[{'path':str(self.adapter),'sha256':w.sha(self.adapter)}]}}}
+        route=self.root/'route.json';route.write_text(json.dumps(context))
         argv=['init','--template',template,'--project',str(self.root/'addon.gproj'),
               '--world','QA.ent','--adapter',str(self.adapter),'--executable',sys.executable,
-              '--addons-root',str(self.root),'--output',str(target)]
+              '--addons-root',str(self.root),'--output',str(target),'--route-context',str(route)]
         with contextlib.redirect_stdout(io.StringIO()):self.assertEqual(w.main(argv),0)
         return target
 

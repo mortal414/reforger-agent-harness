@@ -14,6 +14,8 @@ For uncluttered model before/after evidence, see [clean native visual review](cl
 
 ## Fast test loop
 
+Start with [programmatic route discovery](programmatic-first.md), existing bindings and an addon-owned action/telemetry adapter. Prefer explicit direct-world load and file jobs over editor F5/menu navigation. The following editor loop is a residual fallback only when supported programmatic alternatives are evidenced unavailable for the exact operation, with a recorded necessity and clear native owner. New-version route context/adapter migration is required; do not change a live pin.
+
 1. Open a selected addon and test world with `npm run workbench:open -- --editor world --project '<addon.gproj>' --world '<world.ent>' --authorize-local-test-scripts --execute`.
 2. Select the current World Editor window and press F5 once. The helper's `-run` does not itself establish a live gameplay preview; test components can log initialization while the editor loads. Require a later `GAME` transition and gameplay-ready probe marker. The authorization flag maps to Workbench's `-scriptAuthorizeAll`, so the local refresh prompt is suppressed for this process.
 3. Use an addon-owned deterministic probe to issue orders and report actual position/state evidence. Inspect the Workbench `script.log` and capture the view with `npm run screen:record -- --backend ddagrab --output-idx <monitor> --output '.cache/test-videos/run.mp4' --execute`.

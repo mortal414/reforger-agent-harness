@@ -1,0 +1,9 @@
+{
+  "schema": 1,
+  "task": "validate",
+  "claim": "native-load",
+  "permission": "unknown",
+  "ownership": "unknown",
+  "previousAttempt": "uncertain",
+  "assessments": {}
+}

@@ -1,5 +1,7 @@
 # Feature-recipe index
 
+Start with [programmatic routes](programmatic-first.md) and `workflow.py routes`. Read recurring symptoms with `workflow.py lessons`; [lessons.json](../examples/workflows/lessons.json) keeps evidenced recoveries separate from unknown causes. Update it alongside a newly learned recurring failure, with a retained source/attempt and regression.
+
 Read this before a new subsystem, then use the [research/reuse workflow](workflows.md#research-and-reuse-before-implementation).
 These are leads and bounded lessons, not blanket feature acceptance. Addon-owned
 records remain authoritative for exact paths, hashes, commands and newer results;

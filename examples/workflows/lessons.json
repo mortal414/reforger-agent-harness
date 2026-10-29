@@ -1,0 +1,41 @@
+{
+  "schema": 1,
+  "lessons": [
+    {
+      "id": "git-resolver-failure-supported-git-data-recovery",
+      "symptoms": ["git-getaddrinfo-thread-failed", "git-transport-unavailable"],
+      "observation": "An authorized fresh public-repository clone failed with getaddrinfo() thread failed to start. Harmless resource/DNS checks and one bounded retry did not restore Git transport; the connected GitHub service remained available. No partial checkout remained. The underlying resolver/resource cause was not established.",
+      "cause": null,
+      "recovery": "For this technical transport failure, use the authorized documented GitHub Git Data GET facilities to retrieve the exact ref, commit, trees and blobs. Verify every Git object SHA and the complete tree, materialize a fresh shallow checkout at the actual commit, and require git fsck plus a clean tree. The observed recovery reproduced actual base 51a3d699 and all 105 blobs without importing snapshot history or touching the separately denied Desktop checkout.",
+      "sources": ["docs/audits/programmatic-first-2026-10-29.md", "docs/workflow-recovery.md"],
+      "nextSteps": ["Distinguish a recoverable resolver/resource failure from a permission denial; inspect uncertain output and use one bounded retry after diagnosis.", "Use equivalent documented transports only within existing authorization and with exact repository/base identity. This recipe never authorizes a denied target, credential/security change or private-data upload.", "Apply the focused diff to the actual verified base, preserve existing functionality and run its tests before publishing a review branch. Physical usability and native qualification remain separate."]
+    },
+    {
+      "id": "stock-and-candidate-zero-injected-events",
+      "symptoms": ["injected-input-zero-events", "stock-control-failed"],
+      "observation": "29 Oct parent-supplied native-owner evidence: stock M151 and ASU spawned, supported injected W/S/Tab/F produced no movement/action events. Marco physically moved and boarded stock in the already focused window. Saved ASU checkpoint09 independently records passive down=0/up=0 during initialization. These are retained reports, not a fresh reproduction.",
+      "cause": null,
+      "recovery": null,
+      "sources": ["docs/audits/programmatic-first-2026-10-29.md", "docs/workflow-recovery.md"],
+      "nextSteps": ["Classify stock-control/input infrastructure as unqualified; do not infer an ASU defect, broken physical controls or an unfocused window.", "Keep input-readiness preflight as a check of supplied evidence only. The reported 51a3d699 snapshot contains this code; it is not a verified fix for these symptoms.", "For behavior, reuse supported native registered actions and measured simulation telemetry through an authorized addon adapter. This leaves physical usability pending.", "Native owner may compare one same-build stock control and one bounded delivery probe after readiness/ownership are known. Preserve zero events; stop repeated blind keys. Do not build custom injection or bypass a permission prompt."]
+    },
+    {
+      "id": "r3-held-key-history",
+      "symptoms": ["injected-input-zero-events", "held-key-limitation"],
+      "observation": "Parent-supplied Oct25 R3 history reports automation/held-key trouble followed later by working Tab. No exact technical repair or reproducible recovery command was retained in the accessible evidence inspected for this update.",
+      "cause": null,
+      "recovery": null,
+      "sources": ["docs/audits/programmatic-first-2026-10-29.md"],
+      "nextSteps": ["Do not turn the later working Tab report into an invented focus, delay or injection fix.", "Record the actual changed operation, source/build, input route, stock result and measurements when a recovery is observed; add a regression before promoting it as a recipe."]
+    },
+    {
+      "id": "native-crew-loading-placeholder",
+      "symptoms": ["loading-pattern-image"],
+      "observation": "Retained native capture runs 003-005 had valid camera telemetry but loading-pattern pixels. Runs 006 and 007 passed manual pixel review after the owned respawn placeholder cleanup.",
+      "cause": "The recorded direct-possession fixture skipped native spawn-response loading-placeholder cleanup; this cause is scoped to that fixture.",
+      "recovery": "After exact controlled crew and owned game mode are verified, the fixture calls the public respawn system DestroyLoadingPlaceholder(). Preserve camera activation-before-readiness ordering; qualify on fresh pixels, not flags alone.",
+      "sources": ["docs/native-visual-capture.md"],
+      "nextSteps": ["Reuse the qualified native camera/file-job route and its exact fixture contract; do not globally close menus or click away loading patterns."]
+    }
+  ]
+}

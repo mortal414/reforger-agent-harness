@@ -314,7 +314,7 @@ def plan(job_path):
     job_path = Path(job_path).resolve(strict=True)
     job = read_json(job_path)
     exact_keys(job, ['schema', 'template', 'project', 'world', 'sourceRoots', 'addonRoots', 'requiredFiles', 'requiredClasses',
-                     'capabilities', 'adapter', 'cases', 'timeoutSeconds', 'closeGraceSeconds', 'notes', 'candidateLedger'],
+                     'capabilities', 'adapter', 'cases', 'timeoutSeconds', 'closeGraceSeconds', 'notes', 'candidateLedger', 'routeContext'],
                     ['schema', 'template', 'project', 'world', 'sourceRoots', 'addonRoots', 'requiredFiles', 'requiredClasses',
                      'capabilities', 'adapter', 'cases', 'timeoutSeconds', 'closeGraceSeconds'])
     require(job['schema'] == 1, 'Unsupported job schema')
@@ -409,13 +409,26 @@ def plan(job_path):
         require(set(template['requiredAssertions']) <= set(case['assertions']), 'Case missing mandatory template assertions')
         require(isinstance(case['parameters'], dict), 'Case parameters must be object')
         cases.append(case)
+    import workflow_routes
+    route_preflight = workflow_routes.for_job(job, job_path)
+    expected_task, expected_claim = workflow_routes.DEFAULTS.get(job['template'], ('playtest', 'measured-behavior'))
+    allowed_claims = {(expected_task, expected_claim)}
+    # Existing startup healthy-control jobs can also measure native behavior.
+    if job['template'] == 'startup':
+        allowed_claims.add(('playtest', 'measured-behavior'))
+    if (route_preflight['task'], route_preflight['claim']) not in allowed_claims:
+        route_preflight.update(admission='HOLD', selected=None, reason='JOB_ROUTE_CLAIM_MISMATCH: template requires ' + expected_task + '/' + expected_claim)
+    for pin in route_preflight['pins']:
+        pins[pin['path']] = pin
+    for case in cases:
+        case['assertions'] = list(dict.fromkeys([*case['assertions'], 'route.evidence']))
     return {'schema': 1, 'status': 'NOT_TESTED', 'reason': 'Plan only; capabilities are declarations, native compile/load and behavior remain untested',
             'job': str(job_path), 'jobSha256': sha(job_path), 'template': job['template'], 'templateSha256': sha(TEMPLATES),
             'project': str(project), 'projectGuid': ids[0].upper(), 'world': job['world'], 'dependencies': dependencies, 'classDefinitions': definitions,
             'pins': list(pins.values()), 'executable': executable_pin, 'script': str(script), 'args': args,
             'coordinator': file_identity(Path(__file__)),
             'capabilities': job['capabilities'], 'candidate': candidate, 'cases': cases, 'timeoutSeconds': job['timeoutSeconds'],
-            'closeGraceSeconds': job['closeGraceSeconds'], 'limits': template['limits']}
+            'closeGraceSeconds': job['closeGraceSeconds'], 'limits': template['limits'], 'routePreflight': route_preflight}
 
 
 def not_tested(reason):
@@ -423,7 +436,7 @@ def not_tested(reason):
 
 
 def validate_result(result, request):
-    exact_keys(result, ['schema', 'runId', 'caseId', 'infrastructure', 'assertions', 'lifecycle', 'evidence'],
+    exact_keys(result, ['schema', 'runId', 'caseId', 'infrastructure', 'assertions', 'lifecycle', 'evidence', 'routeEvidence', 'inputControl'],
                ['schema', 'runId', 'caseId', 'infrastructure', 'assertions', 'lifecycle', 'evidence'])
     require(result['schema'] == 1 and result['runId'] == request['runId'] and result['caseId'] == request['caseId'], 'Stale or wrong native result identity')
     def check(row):
@@ -447,6 +460,9 @@ def validate_result(result, request):
     evidence = [file_identity(resolve(Path(request['attemptDir']), p)) for p in result['evidence']]
     # All evidence must have already been durably saved before result publication.
     result['evidence'] = evidence
+    if 'route' in request:
+        import workflow_routes
+        workflow_routes.validate_evidence(result, request)
     return result
 
 
@@ -479,6 +495,8 @@ def run(job, output, execute=False, stop_file=None, only=None):
     require(selected <= {c['id'] for c in planned['cases']}, 'Unknown selected case')
     if not execute:
         return planned
+    require(planned['routePreflight']['admission'] == 'READY',
+            'ROUTE_ADMISSION_HOLD: ' + planned['routePreflight']['reason'] + '; see docs/programmatic-first.md')
     output = Path(output).resolve()
     require(not output.exists() and not output.is_symlink(), 'Fresh batch output required; preserve prior attempts')
     ancestor = output.parent
@@ -513,7 +531,10 @@ def run(job, output, execute=False, stop_file=None, only=None):
             run_id = str(uuid.uuid4())
             request = {'schema': 1, 'runId': run_id, 'caseId': case['id'], 'template': planned['template'],
                        'project': planned['project'], 'world': planned['world'], 'attemptDir': str(attempt),
-                       'assertions': case['assertions'], 'parameters': case['parameters'], 'capabilities': planned['capabilities']}
+                       'assertions': case['assertions'], 'parameters': case['parameters'], 'capabilities': planned['capabilities'],
+                       'route': {k: planned['routePreflight']['selected'][k] for k in ('id', 'mode', 'method', 'proves', 'doesNotProve')},
+                       'claim': planned['routePreflight']['claim'],
+                       'inputControlIdentity': planned['routePreflight']['inputControlIdentity']}
             request_path, result_path, cancel_path = [attempt / name for name in ('request.json', 'adapter-result.json', 'CANCEL')]
             save(request_path, request)
             values = {'{script}': planned['script'], '{request}': str(request_path), '{result}': str(result_path), '{cancel}': str(cancel_path)}
@@ -637,6 +658,15 @@ def main(argv=None):
     p.add_argument('--ledger', type=Path, required=True)
     p = sub.add_parser('bindings', help='Discover machine-local addon workflow bindings; never launch')
     p.add_argument('--registry', type=Path, default=REGISTRY)
+    p = sub.add_parser('routes', help='Recommend supported routes and preflight supplied context; never launch')
+    p.add_argument('--context', type=Path, help='Explicit scoped route context with permission/ownership and pinned assessments')
+    p.add_argument('--task', choices=['research', 'create', 'configure', 'import', 'validate', 'package', 'playtest', 'capture', 'human-acceptance'])
+    p.add_argument('--claim', help='Exact evidence claim; see docs/programmatic-first.md')
+    p = sub.add_parser('lessons', help='Read reusable symptoms and evidenced recovery only')
+    p.add_argument('--symptom')
+    p = sub.add_parser('diagnose-input', help='Classify a saved stock/candidate input receipt offline')
+    p.add_argument('--receipt', type=Path, required=True)
+    p.add_argument('--context', type=Path, help='Separate reviewed route context pinning stock/candidate source manifests; absent means identity unbound')
     p = sub.add_parser('init', help='Create a local job; adapter remains addon-owned')
     p.add_argument('--template', choices=list(read_json(TEMPLATES)))
     p.add_argument('--recipe', choices=list(RECIPES), help='Copy built-in cases/assertions and pin their recipe; never qualifies an adapter')
@@ -649,6 +679,7 @@ def main(argv=None):
     p.add_argument('--required-class', action='append', default=[])
     p.add_argument('--case', action='append', default=[])
     p.add_argument('--output', required=True)
+    p.add_argument('--route-context', help='Reviewed addon-owned route context; pinned at plan time')
     p = sub.add_parser('plan', help='Check inputs and adapter capabilities; never launch')
     choice = p.add_mutually_exclusive_group(required=True)
     choice.add_argument('--job')
@@ -671,6 +702,24 @@ def main(argv=None):
             result = candidate_preflight(args.ledger)
         elif args.command == 'bindings':
             result = bindings(args.registry)
+        elif args.command == 'routes':
+            import workflow_routes
+            require(args.context or args.task and args.claim, 'Provide --context or both --task and --claim')
+            require(not args.context or not (args.task or args.claim), '--context cannot be combined with --task/--claim')
+            context = read_json(args.context) if args.context else {
+                'schema': 1, 'task': args.task, 'claim': args.claim,
+                'permission': 'unknown', 'ownership': 'unknown', 'previousAttempt': 'uncertain'}
+            result = workflow_routes.preflight(context, args.context.resolve().parent if args.context else Path.cwd())
+            if args.context:
+                result['pins'].append(file_identity(args.context))
+        elif args.command == 'lessons':
+            import workflow_routes
+            result = {'schema': 1, 'status': 'NOT_TESTED', 'lessons': workflow_routes.lessons(args.symptom)}
+        elif args.command == 'diagnose-input':
+            import workflow_routes
+            identity, identity_pins = workflow_routes.input_source_identity(read_json(args.context), args.context.resolve().parent) if args.context else (None, [])
+            result = workflow_routes.input_control(read_json(args.receipt), expected_identity=identity)
+            result['pins'] = [file_identity(args.receipt), *identity_pins, *([file_identity(args.context)] if args.context else [])]
         elif args.command == 'init':
             require(args.template or args.recipe, 'Select --template or --recipe')
             require(args.recipe or args.stage is None, '--stage requires --recipe')
@@ -691,6 +740,8 @@ def main(argv=None):
                       'cases': cases,
                       'timeoutSeconds': 180, 'closeGraceSeconds': 30,
                       'notes': 'Review adapter capabilities, requiredFiles, case parameters and recommended assertions before execution.'}
+            if args.route_context:
+                result['routeContext'] = str(Path(args.route_context).resolve(strict=True))
             save(args.output, result)
         elif args.command == 'plan':
             job, _ = selected_job(args)
@@ -701,7 +752,7 @@ def main(argv=None):
             output = args.output or Path(output_root) / args.binding / (dt.datetime.now(dt.timezone.utc).strftime('%Y%m%dT%H%M%SZ') + '-' + uuid.uuid4().hex)
             result = run(job, output, args.execute, args.stop_file, args.case)
         print(json.dumps(result, indent=2, allow_nan=False))
-        return 1 if result.get('status') == 'FAIL' else 2 if args.command == 'run' and args.execute and result.get('status') == 'NOT_TESTED' else 0
+        return 1 if result.get('status') == 'FAIL' else 2 if (args.command == 'run' and args.execute and result.get('status') == 'NOT_TESTED') or (args.command == 'routes' and args.context and result['admission'] != 'READY') else 0
     except (OSError, ValueError) as error:
         print(json.dumps({'status': 'NOT_TESTED', 'reason': str(error)}), file=sys.stderr)
         return 2
