@@ -1,5 +1,7 @@
 # Start a mod task here
 
+First discover supported routes with `python tools/workflow.py routes --task <task> --claim <claim>` and read [programmatic-first execution](programmatic-first.md). Prefer existing or minimally adapted CLI/scripts/resource APIs/registered actions/telemetry/file plans for every operation. Missing knowledge calls for research, not automatic desktop fallback. New-version runs require a reviewed addon-owned `routeContext`; legacy jobs still plan. Keep physical human acceptance separate and never switch routes around a denied boundary.
+
 Use the existing harness as the entrypoint. Keep vehicle scripts, fixtures, worlds and scenario-specific reporters in the addon project. Python 3.11+ runs the small coordinator without extra packages; Pillow is needed only for image export/review. Native tests require the installed game/tools and a qualified addon-owned adapter.
 
 ```powershell

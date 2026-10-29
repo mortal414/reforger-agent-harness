@@ -1,0 +1,149 @@
+{
+  "schema": 1,
+  "routes": [
+    {
+      "id": "source-research", "tasks": ["research", "import", "configure"], "claims": ["source-discovery"],
+      "mode": "offline", "state": "available", "method": "file-operation",
+      "sources": ["src/cli.ts", "src/fs-utils.ts", "docs/knowledge-sources.md"],
+      "commands": ["npm run cli -- search-text <symbol> --rootType all --limit 20", "npm run cli -- list-packaged-resources <file> --limit 200"],
+      "proves": ["Bounded matches in configured installed source, docs, samples or readable resource metadata"],
+      "doesNotProve": ["Resource resolution, native compilation, API legality in another module, copying rights"],
+      "nextStep": "Inspect installed API declarations and an existing working addon; adapt the smallest supported extension point. Do not guess GUIDs or extract proprietary packages."
+    },
+    {
+      "id": "job-file-plan", "tasks": ["create", "configure", "validate"], "claims": ["job-created", "static-plan"],
+      "mode": "offline", "state": "available", "method": "file-operation",
+      "sources": ["tools/workflow.py", "examples/workflows/templates.json"],
+      "commands": ["python tools/workflow.py bindings", "python tools/workflow.py init --help", "python tools/workflow.py plan --job <addon-owned-job.json>"],
+      "proves": ["Job schema, dependency/class/file presence, input pins and required assertions"],
+      "doesNotProve": ["New native addon creation, engine parsing, inheritance, compiled scripts or gameplay"],
+      "nextStep": "Use an existing binding; otherwise create an addon-owned job with explicit project/world/adapter and a route context. Keep accepted source immutable."
+    },
+    {
+      "id": "configuration-files", "tasks": ["configure"], "claims": ["config-written"],
+      "mode": "offline", "state": "available", "method": "file-operation",
+      "sources": ["src/server-config-cli.ts", "examples/workflows/bindings.example.json"],
+      "commands": ["npm run server:config -- --scenario <complete-scenario-id> --out <fresh-config.json>"],
+      "proves": ["Validated local loopback server configuration bytes; explicit private job/binding edits"],
+      "doesNotProve": ["Server startup, native resource-container import or engine-effective inherited configuration"],
+      "nextStep": "Write and inspect explicit configuration files instead of dialog entry; use native readback for effective settings."
+    },
+    {
+      "id": "import-file-plan", "tasks": ["import", "create"], "claims": ["import-plan"],
+      "mode": "offline", "state": "available", "method": "file-operation",
+      "sources": ["docs/asset-preparation.md", "examples/workflows/asset-preparation-cases.example.json", "tools/workflow.py"],
+      "commands": ["python tools/workflow.py init --help"],
+      "proves": ["Pinned source/export contract and recipe assertions for deterministic export, ownership and native parity"],
+      "doesNotProve": ["FBX export execution, native XOB/EDDS import or material binding"],
+      "nextStep": "Reuse the addon-owned exporter and official version-matched metadata; prepare file plans and parity witnesses before any editor operation."
+    },
+    {
+      "id": "resource-api-import", "tasks": ["import", "configure"], "claims": ["native-import", "native-resource-config"],
+      "mode": "native", "state": "unverified", "method": "native-resource-api",
+      "sources": ["docs/asset-preparation.md", "docs/knowledge-sources.md"],
+      "commands": ["npm run cli -- search-text ResourceManager --rootType doc --limit 20"],
+      "proves": ["Only a lead until an addon-owned version-matched importer/plugin is inspected and qualified"],
+      "doesNotProve": ["A universal headless import command exists in this harness"],
+      "nextStep": "Inspect the installed Workbench resource/import APIs and existing addon import scripts. Register a supported addon-owned batch action if feasible; pin implementation/readbacks. Mark unsupported only with scoped evidence."
+    },
+    {
+      "id": "workbench-validate", "tasks": ["validate"], "claims": ["scripts-compiled"],
+      "mode": "native", "state": "available", "method": "native-compile",
+      "sources": ["src/workbench-cli.ts", "tests/workbench-cli.test.ts"],
+      "commands": ["npm run workbench -- validate --project <addon.gproj>"],
+      "proves": ["Current native compiler outcome and retained diagnostics after explicit execution"],
+      "doesNotProve": ["Serialized world load, gameplay or physical input usability"],
+      "nextStep": "Inspect the dry-run plan, then execute under the existing native owner with fresh logs; diagnose the first addon error."
+    },
+    {
+      "id": "workbench-pack", "tasks": ["package"], "claims": ["package-artifact"],
+      "mode": "native", "state": "available", "method": "native-package",
+      "sources": ["src/workbench-cli.ts", "tests/workbench-cli.test.ts"],
+      "commands": ["npm run workbench -- pack --project <addon.gproj> --output <fresh-package-directory>"],
+      "proves": ["Fresh nonempty PAK and packaging-success log, with validation first"],
+      "doesNotProve": ["Loaded package, ordinary gameplay, publication or license acceptance"],
+      "nextStep": "Use a separate immutable build directory; pin addon.gproj/data.pak/resourceDatabase.rdb from the same build."
+    },
+    {
+      "id": "native-direct-world", "tasks": ["validate"], "claims": ["native-load"],
+      "mode": "native", "state": "available", "method": "native-world-load",
+      "sources": ["src/client-cli.ts", "tools/workflow.py", "docs/workflow-adapters.md"],
+      "commands": ["npm run client:run -- --profile <fresh-private-profile> --world <explicit-world.ent> --expect-game", "python tools/workflow.py plan --binding <qualified-binding>"],
+      "proves": ["GAME admission plus an adapter-measured exact world identity/load"],
+      "doesNotProve": ["AI orders, movement, input delivery or human usability; GAME alone is insufficient"],
+      "nextStep": "Prefer the qualified direct-world adapter to F5/menus. The addon owns admission, exact package/world readback, cooperative close and lease."
+    },
+    {
+      "id": "native-actions", "tasks": ["playtest"], "claims": ["measured-behavior"],
+      "mode": "native", "state": "unverified", "method": "registered-action",
+      "sources": ["docs/driving-review.md", "docs/workflow-adapters.md", "tools/driving_review.py"],
+      "commands": ["python tools/workflow.py bindings", "python tools/workflow.py plan --binding <qualified-addon-binding>"],
+      "proves": ["Actual native simulation deltas after supported registered actions: signed powered progress, traverse, ammunition use or completed crew transitions"],
+      "doesNotProve": ["Physical W/S/Tab/F delivery, discoverable controls, human acceptance, or another candidate's capabilities"],
+      "nextStep": "Inspect the current addon adapter and healthy-control receipts. Reuse persistent action/telemetry recipes; pin their exact source and scoped evidence in assessments. Do not infer an action adapter from a capability name."
+    },
+    {
+      "id": "native-component-commands", "tasks": ["playtest"], "claims": ["measured-behavior"],
+      "mode": "native", "state": "unverified", "method": "component-command",
+      "sources": ["docs/native-action-reuse.md", "docs/workflow-adapters.md"],
+      "commands": ["python tools/workflow.py plan --job <reviewed-addon-component-job.json>"],
+      "proves": ["Measured native effects after supported public component commands with normal guards: completed seat entry, engine start, finite weapon operation"],
+      "doesNotProve": ["Registered player-action delivery, physical controls, cinematic aiming or normal reload timing via instant reload"],
+      "nextStep": "Use exact installed component APIs and normal admission guards. Pin the addon-owned adapter; require actual effects and conserved inventory, not a wanted flag or accepted request."
+    },
+    {
+      "id": "native-simulation-commands", "tasks": ["playtest"], "claims": ["measured-behavior"],
+      "mode": "native", "state": "unverified", "method": "simulation-command",
+      "sources": ["docs/native-action-reuse.md", "docs/driving-review.md", "tools/driving_review.py"],
+      "commands": ["python tools/workflow.py plan --job <reviewed-addon-simulation-job.json>"],
+      "proves": ["Measured simulation response to supported bounded simulation controls with exact driver/track-map admission"],
+      "doesNotProve": ["Registered input-action routing or physical controls; transform/velocity setters cannot qualify propulsion"],
+      "nextStep": "Prefer the qualified registered-action course where applicable. If using direct simulation commands, label that method explicitly and preserve actual signed progress, power/contact overlap and stop/reverse gates."
+    },
+    {
+      "id": "native-state-setup", "tasks": ["playtest", "capture"], "claims": ["fixture-state"],
+      "mode": "native", "state": "unverified", "method": "state-setter",
+      "sources": ["docs/native-visual-capture.md", "docs/driving-review.md"],
+      "commands": ["npm run visual:capture -- --help"],
+      "proves": ["Explicit reset, seat assignment, position or pose readback for fixture setup only"],
+      "doesNotProve": ["Powered movement, public get-in interaction, firing, input usability or gameplay"],
+      "nextStep": "Reuse a qualified addon-owned reset/state adapter; observe independent actual behavior through native-actions for functional assertions."
+    },
+    {
+      "id": "native-camera-file-job", "tasks": ["capture"], "claims": ["native-image"],
+      "mode": "native", "state": "available", "method": "native-camera",
+      "sources": ["src/native-capture-cli.ts", "docs/clean-visual-review.md", "tools/native_capture_review.py"],
+      "commands": ["npm run visual:capture -- --help", "python tools/native_capture_review.py --help"],
+      "proves": ["Fresh decoded native image paired with actual camera/state telemetry and source identity"],
+      "doesNotProve": ["Correct model quality, physical input or ordinary crew-camera usability without its separate gates"],
+      "nextStep": "Batch file-based view requests through the current owner's native camera fixture; inspect pixels, loading frames and occupancy. Do not use mouse camera positioning for repeatable views."
+    },
+    {
+      "id": "desktop-import", "tasks": ["import", "configure"], "claims": ["native-import", "native-resource-config"],
+      "mode": "desktop", "state": "available", "method": "desktop-injected",
+      "sources": ["docs/asset-preparation.md", "docs/operations-playbook.md"],
+      "commands": ["Owner-only residual editor operation; no automated input command supplied"],
+      "proves": ["Only the observed import/configuration operation with native readback"],
+      "doesNotProve": ["Import parity, gameplay or physical-key usability"],
+      "nextStep": "Only after scoped evidence rules out supported resource API/batch routes: record the residual operation, clear owner and necessity, then return to scripts for verification."
+    },
+    {
+      "id": "desktop-input-probe", "tasks": ["playtest"], "claims": ["measured-behavior", "injected-input-delivery"],
+      "mode": "desktop", "state": "available", "method": "desktop-injected",
+      "sources": ["docs/workflow-recovery.md", "docs/workflows.md"],
+      "commands": ["Owner-only one bounded observed input probe with a stock control; no custom injection code"],
+      "proves": ["Observed supported automation delivery and separately measured behavior within the tested input route"],
+      "doesNotProve": ["Physical keyboard usability, causal focus diagnosis or an ASU-specific defect when stock fails"],
+      "nextStep": "Prefer native-actions for behavior; use a delivery probe only for the residual delivery question, with exact readiness/stock evidence. Stop on zero events."
+    },
+    {
+      "id": "human-acceptance", "tasks": ["human-acceptance"], "claims": ["human-usability"],
+      "mode": "human", "state": "available", "method": "human-physical",
+      "sources": ["docs/workflow-acceptance.md", "docs/workflows.md"],
+      "commands": ["Human owner performs the short exact-candidate ordinary-player acceptance course"],
+      "proves": ["Explicit human receipt for discovery, entry/exit, controls, driving, weapons and restored use on the exact candidate"],
+      "doesNotProve": ["Untested multiplayer, performance or other candidate versions"],
+      "nextStep": "Retain a small separate human gate after programmatic regressions. The coordinator never substitutes registered actions for physical input."
+    }
+  ]
+}

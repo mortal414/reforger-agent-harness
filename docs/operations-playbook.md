@@ -1,5 +1,7 @@
 # Reforger operations playbook
 
+First use [programmatic route discovery](programmatic-first.md) and the [existing native-action reuse map](native-action-reuse.md). Accomplish preparation/build/configuration, deterministic tests and captures through supported scripts/APIs/CLI/file jobs wherever feasible. Desktop input is a documented residual route after scoped alternatives are evidenced unavailable. The stock/ASU zero-event lesson remains an unresolved input/fixture failure; see `workflow.py lessons --symptom injected-input-zero-events`. Never infer a focus fix or ASU defect, build custom input injection, or switch routes around a denied permission.
+
 ## Validate world component attributes as well as scripts — September 30
 
 A private native-driving fixture passed five script configurations and packaging, then logged an unknown world component attribute and crashed at component creation before GAME. The field belonged to a different inherited test class. Removing that unsupported field in a separate frozen build allowed gameplay startup; the exact native crash internals remain unproved. Script compilation does not validate every authored world attribute. Preserve the failed package, full console, crash log and dump, and separate startup failure from driving evidence. Check the actual component inheritance when copying a fixture.

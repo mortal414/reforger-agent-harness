@@ -1,6 +1,10 @@
 # Addon adapter contract
 
+For the staged programmatic-first version, read [route admission and evidence](programmatic-first.md) and the [native-action reuse map](native-action-reuse.md). New requests additionally contain `route` and `claim`, cases require `route.evidence`, and adapters return matching `routeEvidence` with actual measurements. A native PASS assertion needs actual numeric/boolean readback. Supported desktop input probes additionally need a qualified same-request stock `inputControl`. Missing evidence remains NOT_TESTED. Migrate coordinator, job and adapter together at a safe session boundary; current pinned recipes retain their existing contract until then.
+
 An adapter receives three positional paths: request JSON, result JSON, cancellation file. The coordinator supplies them as exact argument tokens, without shell interpolation. Do not parse stdout for the result. Save native evidence before publishing the result, through exclusive creation or an atomic durable replacement inside that fresh run.
+
+The reviewed follow-up applies the actual-readback requirement to desktop-delivered functional assertions too. For stock controls, context `inputControlSources` pins distinct stock/candidate source/build/fixture manifests; request `inputControlIdentity` carries their SHA-256 pair. Return that explicit pair in control `sourceIdentity` only after verifying the loaded closure. Missing, unbound or mismatched identities censor infrastructure on all input routes. Human acceptance stays in a separate exact-candidate owner receipt; automated PASS booleans cannot qualify reserved human assertions. See the route guide for the precise fields and standalone diagnostic behavior.
 
 Request fields: `schema: 1`, unique `runId`, `caseId`, `template`, exact `project`, `world`, fresh `attemptDir`, `assertions`, `parameters` and declared `capabilities`. Copy the request run/case identities into the result. Native fixtures should bind their own nonce/run ID, build/world/actors and terminal result; the adapter must verify that binding before translating it.
 
@@ -21,7 +25,7 @@ Request fields: `schema: 1`, unique `runId`, `caseId`, `template`, exact `projec
 }
 ```
 
-All statuses are `PASS`, `FAIL` or `NOT_TESTED`, each with a nonempty reason. `actual` is optional structured measurement. Missing required assertions are inserted as NOT_TESTED. The coordinator hashes every referenced evidence file; absolute external original paths are allowed for existing fixtures, so keep local indexes private. For a portable handoff, preserve/copy the referenced files and their manifest, then verify hashes. Never publish local private path mappings, raw chats, profiles, credentials or reference downloads.
+All statuses are `PASS`, `FAIL` or `NOT_TESTED`, each with a nonempty reason. `actual` holds structured measurement; the staged route-aware version requires actual readback for native PASS assertions (except fixture admission/provenance), while older pinned coordinators accepted its omission. Missing required assertions are inserted as NOT_TESTED. The coordinator hashes every referenced evidence file; absolute external original paths are allowed for existing fixtures, so keep local indexes private. For a portable handoff, preserve/copy the referenced files and their manifest, then verify hashes. Never publish local private path mappings, raw chats, profiles, credentials or reference downloads.
 
 Required adapter behavior:
 

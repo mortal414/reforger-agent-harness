@@ -1,5 +1,7 @@
 # Recovery and manual handoff
 
+First seek a [supported programmatic route](programmatic-first.md) for the work itself. `workflow.py lessons --symptom injected-input-zero-events` retains the stock/ASU and R3 unknowns. Zero delivered events on stock and candidate leave input/fixture infrastructure unqualified, not a candidate defect. Physical stock success does not diagnose automation. Prefer authorized native actions plus actual measurements for behavior, retaining a separate physical gate; do not invest in custom OS injection or evade a denied/pending authorization.
+
 ## Repair recoverable failures before handoff
 
 An ordinary command, shell, reader or session failure starts diagnosis, not a
