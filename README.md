@@ -25,6 +25,13 @@ Personal configuration and generated output stay Git-ignored. An optional read-o
 
 GitHub CI checks TypeScript, unit tests, and compilation. It does not test Workbench, game behavior, or recordings. See [tested scope and limitations](docs/workflow-acceptance.md).
 
+## Related projects
+
+- [Gepard](https://github.com/mortal414/gepard): Workshop release and addon source.
+- [Portable Camo Nets](https://github.com/mortal414/portable-camo-nets): Workshop mod for carrying and deploying camouflage hides.
+
+These are separate projects. You do not need either mod to use the harness.
+
 ## License
 
 [Apache-2.0](LICENSE); see [NOTICE](NOTICE). Third-party assets keep their own terms. Independent mods built with the tools do not inherit the harness license. Credit is appreciated, not required.
